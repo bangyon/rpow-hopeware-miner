@@ -16,6 +16,22 @@ import { fileURLToPath } from 'node:url';
 import * as secp from '@noble/secp256k1';
 
 // versi baru @noble/secp256k1 tidak butuh hmacSha256Sync setup
+// ─── Telegram ─────────────────────────────────────────────────────────────────
+const TG_TOKEN = process.env.TG_TOKEN || '';
+const TG_CHAT  = process.env.TG_CHAT  || '';
+const TG_EVERY = parseInt(process.env.TG_EVERY || '10');
+
+async function tgNotify(msg) {
+  if (!TG_TOKEN || !TG_CHAT) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: TG_CHAT, text: msg, parse_mode: 'HTML' }),
+    });
+  } catch (_) {}
+}
+
 
 const __filename = fileURLToPath(import.meta.url);
 
@@ -234,6 +250,11 @@ async function mineLoop(tokenType) {
         s.minted++;
         s.totalMs += elapsed;
         console.log(`[${label}] ✓ Minted #${s.minted}  nonce=${nonce}  ${elapsed}ms`);
+        if (s.minted % TG_EVERY === 0) {
+          const upSec = Math.floor((Date.now() - startTime) / 1000);
+          const tph = (s.minted / upSec * 3600).toFixed(1);
+          tgNotify(`⛏ <b>Hopeware Miner</b>\n🪙 ${label}: <b>${s.minted} minted</b>\n⚡ Rate: ${tph} token/hr\n❌ Errors: ${s.errors}`);
+        }
       } else {
         s.errors++;
         const retryAfter = mr.data?.retry_after || 5;
@@ -275,6 +296,7 @@ async function main() {
 
   setInterval(printStats, 30000);
   startTime = Date.now();
+  tgNotify(`🚀 <b>Hopeware Miner Started</b>\n👤 Pubkey: <code>${pubkey.slice(0,16)}...</code>\n🧵 Threads: ${CONFIG.threads}\n🎯 Token: ${CONFIG.token.toUpperCase()}`);
 
   const loops = [];
   if (CONFIG.token === 'a' || CONFIG.token === 'both') loops.push(mineLoop('a'));
