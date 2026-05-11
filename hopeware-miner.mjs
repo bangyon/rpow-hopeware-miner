@@ -213,19 +213,20 @@ async function mineLoop(tokenType) {
     try {
       const cr = await apiRequest('POST', `${path}/challenge`, {});
       if (!cr.ok || !cr.data.challenge_id) {
-        console.log(`[${label}] ✗ Challenge (${cr.status}): ${JSON.stringify(cr.data)}`);
         s.errors++;
-        await sleep(2000);
+        // Baca retry_after dari response server
+        const retryAfter = cr.data?.retry_after || 5;
+        console.log(`[${label}] ✗ Challenge (${cr.status}) — retry in ${retryAfter}s`);
+        await sleep(retryAfter * 1000);
         continue;
       }
 
       const { challenge_id, nonce_prefix, difficulty_bits } = cr.data;
-      if (CONFIG.verbose) console.log(`[${label}] Challenge: ${challenge_id} | ${difficulty_bits} bits | prefix: ${nonce_prefix}`);
+      if (CONFIG.verbose) console.log(`[${label}] Challenge: ${challenge_id} | ${difficulty_bits} bits`);
 
       const t0 = Date.now();
       const { nonce } = await mineWithThreads(nonce_prefix, difficulty_bits, CONFIG.threads);
       const elapsed = Date.now() - t0;
-      if (CONFIG.verbose) console.log(`[${label}] Found nonce: ${nonce} | verify: ${require('crypto').createHash('sha256').update(nonce_prefix+nonce).digest('hex').slice(0,16)}`);
 
       const mr = await apiRequest('POST', `${path}/mint`, { challenge_id, solution_nonce: nonce });
 
@@ -235,13 +236,16 @@ async function mineLoop(tokenType) {
         console.log(`[${label}] ✓ Minted #${s.minted}  nonce=${nonce}  ${elapsed}ms`);
       } else {
         s.errors++;
-        console.log(`[${label}] ✗ Mint failed (${mr.status}): ${JSON.stringify(mr.data)}`);
+        const retryAfter = mr.data?.retry_after || 5;
+        console.log(`[${label}] ✗ Mint failed (${mr.status}) — retry in ${retryAfter}s`);
+        await sleep(retryAfter * 1000);
+        continue; // skip delay bawah, langsung retry
       }
 
     } catch (e) {
       s.errors++;
       console.log(`[${label}] Error: ${e.message}`);
-      await sleep(2000);
+      await sleep(5000);
     }
 
     await sleep(CONFIG.delay);
